@@ -1,0 +1,103 @@
+# Docker Compose Configuration File
+# This file defines all the services (containers) that will run together
+# I'm using version 3.8 which is a stable version for docker-compose
+version: '3.8'
+
+# Here I define all the services that make up my application
+# Each service is like a separate container that does a specific job
+services:
+  # Database Service - MySQL 8.0
+  # This is where I store all my application data
+  # I learned that databases need to be persistent, so I use volumes
+  db:
+    # Tell Docker to build this service using the Dockerfile in ./db folder
+    build:
+      context: ./db
+    # Give it a name so I can easily identify it when running docker ps
+    container_name: my-mysql
+    # Environment variables that MySQL needs to set up
+    # These are like settings that the container reads when it starts
+    environment:
+      MYSQL_ROOT_PASSWORD: root  # The password for the root user
+      MYSQL_DATABASE: user_db     # Create a database called user_db automatically
+    # Port mapping: host:container
+    # This means port 3306 on my computer maps to port 3306 in the container
+    # So I can connect to MySQL from my host machine using localhost:3306
+    ports:
+      - "3306:3306"
+    # Volumes are used to persist data even if the container is deleted
+    # db-data is a named volume that stores the MySQL data
+    # Without this, all data would be lost when container stops!
+    volumes:
+      - db-data:/var/lib/mysql
+
+  # Backend API Service
+  # This is my Node.js server that handles API requests
+  # It connects to the database to get/save data
+  backend:
+    # Build from the Dockerfile in the backend folder
+    build:
+      context: ./backend
+    container_name: backend
+    # Environment variables that my backend code needs
+    # These tell the backend how to connect to the database
+    environment:
+      DB_HOST: db        # Use 'db' as hostname (Docker networking magic!)
+      DB_USER: root       # Database username
+      DB_PASSWORD: root   # Database password (same as MYSQL_ROOT_PASSWORD)
+      DB_NAME: user_db    # Which database to use
+    # Expose port 3000 so I can access the API from my browser
+    ports:
+      - "3000:3000"
+    # depends_on means this service waits for 'db' to be ready first
+    # Important: this doesn't wait for db to be fully initialized, just started
+    depends_on:
+      - db
+
+  # Frontend Application Service
+  # This is my React/Vite app that users interact with
+  # It makes requests to the backend API
+  frontend:
+    # Build from the Dockerfile in the frontend folder
+    build:
+      context: ./frontend
+    container_name: frontend
+    # Vite needs to know where the backend is
+    # I use 'backend:3000' because Docker creates a network where services can talk
+    # to each other using their service names!
+    environment:
+      VITE_BACKEND_URL: http://backend:3000
+    # Vite dev server runs on port 5173 by default
+    ports:
+      - "5173:5173"
+    # Frontend needs backend to be running first
+    depends_on:
+      - backend
+
+  # phpMyAdmin Service
+  # This is a web interface to manage my MySQL database
+  # Super useful for debugging and seeing what's in the database
+  # I don't need to build this - just use the official image from Docker Hub
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    # Environment variables for phpMyAdmin
+    environment:
+      PMA_HOST: db                    # Tell it which database to connect to
+      MYSQL_ROOT_PASSWORD: root       # Password to authenticate
+    # phpMyAdmin runs on port 80 inside container, I map it to 8080 on host
+    # So I access it at http://localhost:8080
+    ports:
+      - "8080:80"
+    # restart: always means if the container crashes, Docker will restart it
+    # Good for production, but also helpful during development
+    restart: always
+    # Obviously needs the database to be running
+    depends_on:
+      - db
+
+# Named Volumes Section
+# Volumes are like external storage that persists even if containers are deleted
+# I define them here so Docker knows to create them
+volumes:
+  db-data:  # This volume stores all the MySQL data files
